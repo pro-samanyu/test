@@ -7,25 +7,20 @@ import subprocess
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# Folder to save tmate sessions
-TMATE_DIR = "./tmate_sessions"
-os.makedirs(TMATE_DIR, exist_ok=True)
-
-# In-memory user storage
-users = {}
 database_file = "database.txt"  # Stores user|container_id|ssh_session
+os.makedirs("./tmate_sessions", exist_ok=True)
 
-# Prebuilt Docker image
+# Prebuilt Docker image (must build locally)
 DOCKER_IMAGE = "ubuntu-22.04-with-tmate"
 
 # Resource limits
 MEM_LIMIT = "2g"
-CPU_QUOTA = 100000  # 1 CPU core
+CPU_QUOTA = 100000  # 1 CPU
 
-# Maximum one VPS per user
+# Max one VPS per user
 MAX_VPS = 1
 
-# --- Helper Functions ---
+# --- Helper functions ---
 def add_to_database(user, container_id, ssh_command):
     with open(database_file, "a") as f:
         f.write(f"{user}|{container_id}|{ssh_command}\n")
@@ -51,13 +46,12 @@ def get_user_vps(user):
     return None
 
 async def start_tmate(container_id):
-    """Starts tmate in the container and returns SSH session"""
+    """Start tmate in container and return SSH session"""
     exec_cmd = await asyncio.create_subprocess_exec(
         "docker", "exec", container_id, "tmate", "-F",
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
-    # Capture the SSH session line
     while True:
         line = await exec_cmd.stdout.readline()
         if not line:
@@ -68,8 +62,7 @@ async def start_tmate(container_id):
     return None
 
 async def create_vps(user):
-    """Creates a new VPS container"""
-    # Run container
+    """Create a new VPS container"""
     container_id = subprocess.check_output([
         "docker", "run", "-dit",
         "--privileged", "--cap-add=ALL",
@@ -93,13 +86,11 @@ async def manage_vps(container_id, action):
     elif action == "restart":
         subprocess.run(["docker", "restart", container_id])
 
-    # Regenerate tmate session after restart/start
     ssh = await start_tmate(container_id)
     if ssh:
         # Update database
         remove_from_database(container_id)
         user = None
-        # Find user in database
         for line in open(database_file):
             if container_id in line:
                 user = line.split("|")[0]
@@ -116,14 +107,13 @@ def login():
         password = request.form["password"]
         confirm = request.form.get("confirm")
 
-        # Register new user
+        # Simple registration/login
         if username not in users:
             if password == confirm:
                 users[username] = password
             else:
                 return "Passwords do not match!"
-        
-        # Login
+
         if users.get(username) == password:
             session["user"] = username
             return redirect(url_for("dashboard"))
@@ -135,7 +125,7 @@ def login():
 def dashboard():
     if "user" not in session:
         return redirect(url_for("login"))
-    
+
     user = session["user"]
     vps = get_user_vps(user)
     ssh_info = vps["ssh"] if vps else ""
@@ -143,9 +133,7 @@ def dashboard():
     if request.method == "POST":
         action = request.form.get("action")
         if action == "deploy" and not vps:
-            # Deploy VPS
-            container_id, ssh = asyncio.run(create_vps(user))
-            ssh_info = ssh
+            container_id, ssh_info = asyncio.run(create_vps(user))
         elif vps and action in ["start", "stop", "restart"]:
             ssh_info = asyncio.run(manage_vps(vps["container_id"], action))
         elif vps and action == "delete":
@@ -162,4 +150,5 @@ def logout():
     return redirect(url_for("login"))
 
 if __name__ == "__main__":
+    users = {}  # Simple in-memory users
     app.run(host="0.0.0.0", port=5000)
