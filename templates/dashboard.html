@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+</head>
+<body>
+    <h2>Welcome</h2>
+    <p>Container: {{ container if container else "Not Deployed" }}</p>
+    {% if tmate %}
+        <p>TMATE SSH: <b>{{ tmate }}</b></p>
+    {% endif %}
+    <form method="POST">
+        {% if not container %}
+        <button name="action" value="deploy">Deploy VPS</button>
+        {% else %}
+        <button name="action" value="start">Start</button>
+        <button name="action" value="stop">Stop</button>
+        <button name="action" value="restart">Restart</button>
+        <button name="action" value="delete">Delete</button>
+        {% endif %}
+    </form>
+    <a href="/logout">Logout</a>
+</body>
+</html>
